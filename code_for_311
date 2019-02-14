@@ -1,0 +1,132 @@
+
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Jan 22 22:41:35 2019
+
+@author: rebeccamoran
+"""
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+
+from datetime import timedelta
+
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.datasets import make_regression
+
+from math import log
+from math import exp
+
+olddf = pd.read_csv('lagan_311_service_requests-1.csv', low_memory=False);
+
+# drop several columns (may put back later)
+#df = olddf.drop(columns=[]) #'closure_reason'
+df = olddf
+
+# remove some based on closure reasons (duplicates or opened/submitted in error)
+df = df[~(df.closure_reason.str.contains('uplicate', na=False))]
+df = df[~(df.closure_reason.str.contains('ubmitted in error', na=False))]
+df = df[~(df.closure_reason.str.contains('pened in error', na=False))]
+df = df[~(df.closure_reason.str.contains('NOBASE', na=False))]
+
+# drop the rows where the closure date is null (because that means case is still open)
+# drop the rows where the neighborhood is null (because predict with that, may keep later and fill in)
+df = df.dropna(subset=['closed_dt', 'neighborhood'])
+
+# add a new column for the difference in time between open and close
+df['time_diff'] = pd.to_datetime(df['closed_dt']) - pd.to_datetime(df['open_dt'])
+
+# remove 'Boston' neighborhood because ambiguous. Put back later?
+df = df[df.neighborhood != 'Boston']
+
+# remove 'Chestnut Hill' neighborhood because small. Recategorize?
+df = df[df.neighborhood != 'Chestnut Hill']
+
+# combine similar neighborhoods
+df = df.replace({'neighborhood': {'Allston': 'Allston / Brighton', \
+                             'Brighton': 'Allston / Brighton', \
+                             'Greater Mattapan': 'Mattapan', \
+                             'South Boston / South Boston Waterfront':'South Boston'}})
+
+
+# removing others that I may keep: (some categorical)
+df = df.drop(columns = ['pwd_district', \
+                        'police_district', 'ward','precinct','location_zipcode',\
+                        'subject', 'case_enquiry_id', \
+                        'fire_district', 'city_council_district',\
+                        'neighborhood_services_district', \
+                         'ontime', 'case_status', \
+                        'case_title', 'queue', 'department','closedphoto',\
+                        'location','location_street_name', \
+                        'latitude', 'longitude', 'target_dt',\
+                        'open_dt', 'closed_dt', 'closure_reason']
+
+
+# turn photo url into 1 or 0
+df.submittedphoto = ~df.submittedphoto.isnull()
+
+# convert to seconds
+sec = lambda t: t.total_seconds() 
+df.time_diff = df.time_diff.map(sec)
+
+# only want times of length at least sixty seconds
+df = df[df.time_diff > 120]
+
+# convert to days
+df.time_diff = df.time_diff/(60*60*24)
+
+# save a version of the dataframe in case I want to look at it without the dummies
+cleandf = df.copy();
+
+# dropping the extraneous reason (each type corresponds with a reason)
+df = df.drop(columns = ['reason'])
+
+# turn the neighborhood and reasons into dummy vars
+df = pd.get_dummies(df) 
+# Note: dropping the extra dummy did not improve the model
+
+# defining a log function that puts a bound
+def customlog(x): #input days, want output to be between -infinity and 7
+    return min(log(x), 7)
+    
+
+
+# make a training and test set
+X_train, X_test, y_train, y_test = train_test_split(df.drop(columns = ['time_diff']), df.time_diff, test_size=0.2)
+
+# convert training set into log (don't need to do test set)
+log_y_train = y_train.map(customlog)
+
+# defining a linear regression
+def linregmodel(Xtrain, ytrain):
+    linreg = LinearRegression().fit(Xtrain, ytrain)
+    return linreg
+
+L = linregmodel(X_train, log_y_train)
+l_y_pred = np.minimum(L.predict(X_test), 7)
+l_y_pred = np.exp(l_y_pred)
+print((abs(l_y_pred - y_test)).mean())
+
+# defining a random forest model
+def forestmodel(Xtrain, ytrain):
+    fregr = RandomForestRegressor()
+    fregr.fit(Xtrain, ytrain)
+    return fregr
+
+F = forestmodel(X_train, log_y_train)
+f_y_pred = np.minimum(F.predict(X_test), 7)
+f_y_pred = np.exp(f_y_pred)
+MAE = (abs(f_y_pred - y_test)).mean()
+baseline = (abs(y_test.mean() - y_test)).mean()
+# my metric for measuring performance:
+print(1 - MAE/baseline)
+    
+    
