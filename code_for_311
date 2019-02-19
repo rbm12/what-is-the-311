@@ -25,7 +25,7 @@ from sklearn.datasets import make_regression
 from math import log
 from math import exp
 
-olddf = pd.read_csv('lagan_311_service_requests-1.csv', low_memory=False);
+olddf = pd.read_csv('lagan_311_service_requests.csv', low_memory=False);
 
 # drop several columns (may put back later)
 #df = olddf.drop(columns=[]) #'closure_reason'
@@ -44,10 +44,10 @@ df = df.dropna(subset=['closed_dt', 'neighborhood'])
 # add a new column for the difference in time between open and close
 df['time_diff'] = pd.to_datetime(df['closed_dt']) - pd.to_datetime(df['open_dt'])
 
-# remove 'Boston' neighborhood because ambiguous. Put back later?
+# remove 'Boston' neighborhood because ambiguous
 df = df[df.neighborhood != 'Boston']
 
-# remove 'Chestnut Hill' neighborhood because small. Recategorize?
+# remove 'Chestnut Hill' neighborhood because small
 df = df[df.neighborhood != 'Chestnut Hill']
 
 # combine similar neighborhoods
@@ -57,7 +57,7 @@ df = df.replace({'neighborhood': {'Allston': 'Allston / Brighton', \
                              'South Boston / South Boston Waterfront':'South Boston'}})
 
 
-# removing others that I may keep: (some categorical)
+# removing others
 df = df.drop(columns = ['pwd_district', \
                         'police_district', 'ward','precinct','location_zipcode',\
                         'subject', 'case_enquiry_id', \
@@ -77,7 +77,7 @@ df.submittedphoto = ~df.submittedphoto.isnull()
 sec = lambda t: t.total_seconds() 
 df.time_diff = df.time_diff.map(sec)
 
-# only want times of length at least sixty seconds
+# only want times of length at least two minutes
 df = df[df.time_diff > 120]
 
 # convert to days
